@@ -1,0 +1,21 @@
+version: "1.0.0"
+vault:
+  root_dir: "vault"
+repo:
+  url: "https://github.com/dqhung15/oriondb"
+  root: "homepage/"
+site:
+  origin: "https://dqhung15.github.io"
+  title: "OrionDB"
+  description: "A vector database built from scratch. Learning project exploring HNSW indexing, similarity search, and storage engine design."
+  base_path: "/oriondb"
+  nav:
+    - title: "Getting Started"
+      link: "/01-getting-started/index"
+      icon: icon.rocket
+    - title: "Architecture"
+      link: "/02-architecture/index"
+      icon: icon.cpu
+    - title: "Dev Journal"
+      link: "/03-journal/index"
+      icon: icon.book
