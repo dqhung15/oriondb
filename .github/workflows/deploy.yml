@@ -32,13 +32,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: homepage/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
-        working-directory: homepage
-
-      - run: pnpm build
-        working-directory: homepage
+      - run: pnpm --filter oriondb-homepage build
 
       - uses: actions/upload-pages-artifact@v3
         with:
