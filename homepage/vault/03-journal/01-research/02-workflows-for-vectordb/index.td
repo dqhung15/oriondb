@@ -89,7 +89,7 @@ Its architecture is similar to other DBMSs:
 
 Typically, data are vectorized outside VDBMS before being inserted. Queries must also be vectorized before the VDBMS can assess similarity.
 
-## The Query Pattern & How VDBMS Serves It
+## The Query Pattern in VDBMS
 
 Unlike SQL ("find the orders of a specific user"), vector queries ask: "find the k vectors most similar to this query vector".
 
@@ -99,9 +99,11 @@ From a developer perspective, VDBMS queries feel closer to **key-value store que
 
 In practice, queries often also need metadata filters: "find the most similar plays, but only from Greece, type=tragedy".
 
-- Metadata -> indexed with traditional techniques (B+-trees).
-- Vectors -> their own index structures.
-- VDBMSs without native hybrid query support push this to the application layer.
+Metadata filters feel like similar to SQL WHERE clauses supplementing the vector search capability. Metadata can be indexed with traditional techniques (B+-trees) found in RDBMS.
+
+Vectors have their own index structures optimized for the search requiremnts.
+
+VDBMSs without native hybrid query support push this to the application layer.
 
 ### Similarity metrics
 
