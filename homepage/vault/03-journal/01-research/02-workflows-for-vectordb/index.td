@@ -32,21 +32,44 @@ All vector DB retrieval is based on **approximate similarity search**. Any data 
 
 ### Image & video similarity search
 
-- Images: normalized -> feature extraction via CNN (edges -> textures -> shapes) -> vectorized.
-- Similar vector representations -> visually similar images. Basis for **reverse image search**.
-- Video: each frame -> feature vector -> sequence of feature vectors (a tensor) -> flattened for storage.
+The problem is finding images or videos that are visually similar to a given input, without relying on tags or metadata.
+
+The solution:
+
+- Images are normalized (size, pixel values), then passed through a CNN that extracts increasingly abstract features: from simple edges and shapes to textures like fur or foliage.
+- These features are vectorized and stored in the VDBMS. Similar vector representations -> visually similar images. This is the basis for **reverse image search**.
+
+For video, the same idea applies but with an added temporal dimension:
+
+- Video is broken down into individual frames (or a representative subset).
+- Each frame -> feature vector representing its content.
+- Since temporal order matters (a Greek play can go from comedy to tragedy), frames are combined into a sequence -> a 3D tensor (frames x features x time) -> flattened and stored in the VDBMS.
 
 ### Voice recognition
 
-- Audio: digitized -> split into short frames -> each frame normalized, filtered, transformed -> feature vector.
-- Whole audio = a sequence of feature vectors.
-- Tolerance varies: speaker authentication (high precision) vs. conversational agents (more lenient).
+The problem is identifying or understanding audio input, whether for authenticating a speaker or recognizing spoken words.
+
+The solution:
+
+- Audio is digitized and split into short frames, each representing a segment.
+- Each frame is normalized, filtered, and transformed -> feature vector.
+- The whole audio = a sequence of feature vectors, stored in the VDBMS.
+
+The required similarity tolerance differs by use case:
+
+- **Speaker authentication**: high tolerance, the voice must closely match the stored recording.
+- **Conversational agents**: sequences of vectors are fed into a neural network to recognize and classify spoken words, then respond via a generative model. The similarity tolerance here is more lenient than speaker authentication.
 
 ### Recommender systems
 
-- User behavior and item attributes are vectorized.
-- Finding similar users or items -> nearest-neighbor search in vector space.
-- Used by YouTube, Airbnb, e-commerce platforms.
+The problem is finding items or users relevant to a specific user, based on behavior and preferences. Explicit signals like ratings or categories are too sparse and rigid to capture the full picture.
+
+The solution:
+
+- User behavior and item attributes are encoded as vectors and stored in the VDBMS.
+- Finding similar users or relevant items -> nearest-neighbor search: "find the k users or items most similar to this query vector".
+
+This is used by YouTube, Airbnb, and many e-commerce platforms.
 
 ### Chatbots & long-term memory (RAG)
 
@@ -61,6 +84,29 @@ This is solved by adding an external VDBMS:
 - Those are injected as additional context into the generative model.
 
 This pattern is called **Retrieval-Augmented Generation (RAG)**.
+
+```mermaid
+flowchart LR
+  subgraph app [Application]
+    A[User prompt]
+  end
+
+  subgraph mem [VDBMS - Long-term memory]
+    B[Vectorization]
+    C[(Vector store)]
+  end
+
+  subgraph gen [Generative model]
+    D[Response]
+  end
+
+  A -->|vectorize| B
+  B -->|query top-k| C
+  C -->|similar past context| gen
+  A --> gen
+  gen --> D
+  D -->|store| B
+```
 
 ## Fundamentals of VDBMS
 
@@ -81,38 +127,54 @@ The VDBMS for each object, stores:
 
 ### VDBMS Architecture
 
-Its architecture is similar to other DBMSs:
+In terms of architecture, a VDBMS is not very different from other DBMSs:
 
 - **Query component**: parses queries, checks access rights, optimizes, routes to storage.
-- **Storage component**: transaction logs (WAL), buffers, memory, CPU/GPU, specialized hardware (FPGAs, TPUs).
-- **Optimizer/planner component**: decide which search path to take/which index to use.
+- **Storage component**: transaction logs (WAL), buffers, memory, CPU/GPU, and possibly specialized hardware (FPGAs, TPUs).
+- **Optimizer/planner component**: decides which search path to take and which index to use.
 
-Typically, data are vectorized outside VDBMS before being inserted. Queries must also be vectorized before the VDBMS can assess similarity.
+One thing worth noting is that data is typically vectorized outside the VDBMS before being inserted. The same applies to queries: a natural language query must also be vectorized before the VDBMS can assess similarity.
+
+```mermaid
+flowchart LR
+  subgraph insert [Insert path]
+    S[(Source data)] -->|vectorize| V1[Vectorization]
+    V1 --> I[Indexing]
+    I --> DB[(Vector store)]
+  end
+
+  subgraph query [Query path]
+    App[Application] -->|vectorize| V2[Vectorization]
+    V2 -->|query| DB
+    DB -->|top-k results| App
+  end
+```
 
 ## The Query Pattern in VDBMS
 
-Unlike SQL ("find the orders of a specific user"), vector queries ask: "find the k vectors most similar to this query vector".
+In relational databases, queries take forms like "find the orders of a specific user" or "find products on sale". Vector queries are fundamentally different: they ask "find the k vectors most similar to this query vector". This is **k-Nearest Neighbor (kNN) search**, or in practice, **Approximate Nearest Neighbor (ANN) search**.
 
-From a developer perspective, VDBMS queries feel closer to **key-value store queries** than SQL: retrieve documents not by identifier but by one or several query vectors. The key difference from NoSQL: execution searches for **nearest neighbors**, not exact matches.
+From a developer perspective, VDBMS queries feel closer to **key-value store queries** than SQL: documents are retrieved not by identifier but by one or several query vectors. The key difference from NoSQL though is that execution searches for **nearest neighbors**, not exact matches.
 
 ### Hybrid queries
 
-In practice, queries often also need metadata filters: "find the most similar plays, but only from Greece, type=tragedy".
+In practice, pure vector similarity is often not enough. Queries frequently need to combine vector search with structured filters, for example: "find the most similar plays, but only from Greece, type=tragedy". These are called **hybrid queries**.
 
-Metadata filters feel like similar to SQL WHERE clauses supplementing the vector search capability. Metadata can be indexed with traditional techniques (B+-trees) found in RDBMS.
+The two sides are indexed differently:
 
-Vectors have their own index structures optimized for the search requiremnts.
+- Metadata -> indexed with traditional techniques like B+-trees, similar to RDBMS.
+- Vectors -> their own index structures optimized for similarity search.
 
-VDBMSs without native hybrid query support push this to the application layer.
+VDBMSs without native hybrid query support push the metadata filtering responsibility to the application layer.
 
 ### Similarity metrics
 
-The similarity metric choice depends on data and context:
+To compare vectors, a distance or similarity metric is needed. The choice depends on the data and context:
 
-- **Euclidean distance (L2)**: straight-line distance, common in low-dimensional spaces.
-- **Cosine similarity**: angle between vectors, regardless of magnitude; common in NLP.
-- **Dot product**: sum of element-wise products.
-- **Jaccard similarity**: shared over total elements, set-based.
+- **Euclidean distance (L2)**: straight-line distance between two points; common in low-dimensional spaces.
+- **Cosine similarity**: measures the angle between two vectors, regardless of their magnitude; common in NLP where direction matters more than scale.
+- **Dot product**: sum of element-wise products; related to cosine similarity but magnitude-sensitive.
+- **Jaccard similarity**: ratio of shared elements to total elements; set-based, useful for sparse data.
 
 ### Indexing
 
@@ -135,7 +197,7 @@ Choice of index depends on:
 
 ## Current Challenges
 
-- Speed vs accuracy Tradeoff
+- **Speed vs accuracy tradeoff**: Since most VDBMS queries go through ANN, this tradeoff is more central here than in any other data model. Lossless indices (e.g. R-trees) preserve accuracy but are slower; lossy indices (e.g. PQ) trade some accuracy for speed and reduced storage. This tension is especially sharp in large datasets where both are business-critical, like financial decision support systems where results must be fast and correct.
 - Growing dimensionality and sparsity
   As domain needs grow, vectors need more dimensions. Two problems follow.
   - **Distance unreliability:** In high-dimensional spaces, volume grows exponentially but the number of vectors does not. Points concentrate near the hypersurface, so distances between vectors become increasingly similar -> proximity loses meaning. Developing effective distance measures is an open research problem.
